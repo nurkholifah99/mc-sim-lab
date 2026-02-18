@@ -1,4 +1,4 @@
-import { useState, useCallback } from "react";
+import { useState, useCallback, useRef } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -19,6 +19,9 @@ import {
   AlertTriangle,
   CheckCircle2,
   Zap,
+  Upload,
+  FileSpreadsheet,
+  X,
 } from "lucide-react";
 import {
   BarChart,
@@ -33,7 +36,7 @@ import {
   RadialBar,
   Cell,
 } from "recharts";
-import { runSimulation, type SimulationParams, type SimulationResult } from "@/lib/simulation";
+import { runSimulation, runSimulationFromDataset, parseCSV, type SimulationParams, type SimulationResult, type DatasetRow } from "@/lib/simulation";
 
 const STEPS = [
   {
@@ -211,11 +214,35 @@ export default function SimulationApp() {
   const [resultB, setResultB] = useState<SimulationResult | null>(null);
   const [activeTab, setActiveTab] = useState("dashboard");
 
+  const [datasetA, setDatasetA] = useState<DatasetRow[] | null>(null);
+  const [datasetB, setDatasetB] = useState<DatasetRow[] | null>(null);
+  const [datasetFileNameA, setDatasetFileNameA] = useState("");
+  const [datasetFileNameB, setDatasetFileNameB] = useState("");
+  const fileInputRefA = useRef<HTMLInputElement>(null);
+  const fileInputRefB = useRef<HTMLInputElement>(null);
+
+  const handleFileUpload = (file: File, scenario: "A" | "B") => {
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      const text = e.target?.result as string;
+      const rows = parseCSV(text);
+      if (rows.length === 0) return;
+      if (scenario === "A") {
+        setDatasetA(rows);
+        setDatasetFileNameA(file.name);
+      } else {
+        setDatasetB(rows);
+        setDatasetFileNameB(file.name);
+      }
+    };
+    reader.readAsText(file);
+  };
+
   const runBothSimulations = useCallback(() => {
-    setResultA(runSimulation(paramsA));
-    setResultB(runSimulation(paramsB));
+    setResultA(datasetA ? runSimulationFromDataset(datasetA, paramsA.numServers) : runSimulation(paramsA));
+    setResultB(datasetB ? runSimulationFromDataset(datasetB, paramsB.numServers) : runSimulation(paramsB));
     setActiveTab("results");
-  }, [paramsA, paramsB]);
+  }, [paramsA, paramsB, datasetA, datasetB]);
 
   const getWaitStatus = (val: number) => (val > 10 ? "danger" : val > 5 ? "warning" : "good");
   const getUtilStatus = (val: number) => (val > 90 ? "danger" : val > 70 ? "warning" : "good");
@@ -278,10 +305,21 @@ export default function SimulationApp() {
                   </CardTitle>
                 </CardHeader>
                 <CardContent className="space-y-4">
-                  <ParamInput label="Tingkat Kedatangan (λ)" unit="pelanggan/menit" value={paramsA.arrivalRate} onChange={(v) => setParamsA({ ...paramsA, arrivalRate: v })} />
-                  <ParamInput label="Tingkat Pelayanan (μ)" unit="pelanggan/menit" value={paramsA.serviceRate} onChange={(v) => setParamsA({ ...paramsA, serviceRate: v })} />
+                  <DatasetUpload
+                    fileName={datasetFileNameA}
+                    rowCount={datasetA?.length ?? 0}
+                    onUpload={(file) => handleFileUpload(file, "A")}
+                    onClear={() => { setDatasetA(null); setDatasetFileNameA(""); }}
+                    inputRef={fileInputRefA}
+                  />
+                  {!datasetA && (
+                    <>
+                      <ParamInput label="Tingkat Kedatangan (λ)" unit="pelanggan/menit" value={paramsA.arrivalRate} onChange={(v) => setParamsA({ ...paramsA, arrivalRate: v })} />
+                      <ParamInput label="Tingkat Pelayanan (μ)" unit="pelanggan/menit" value={paramsA.serviceRate} onChange={(v) => setParamsA({ ...paramsA, serviceRate: v })} />
+                      <ParamInput label="Durasi Simulasi" unit="menit" value={paramsA.duration} onChange={(v) => setParamsA({ ...paramsA, duration: Math.max(1, Math.round(v)) })} />
+                    </>
+                  )}
                   <ParamInput label="Jumlah Server (c)" unit="kasir" value={paramsA.numServers} onChange={(v) => setParamsA({ ...paramsA, numServers: Math.max(1, Math.round(v)) })} />
-                  <ParamInput label="Durasi Simulasi" unit="menit" value={paramsA.duration} onChange={(v) => setParamsA({ ...paramsA, duration: Math.max(1, Math.round(v)) })} />
                 </CardContent>
               </Card>
 
@@ -294,10 +332,21 @@ export default function SimulationApp() {
                   </CardTitle>
                 </CardHeader>
                 <CardContent className="space-y-4">
-                  <ParamInput label="Tingkat Kedatangan (λ)" unit="pelanggan/menit" value={paramsB.arrivalRate} onChange={(v) => setParamsB({ ...paramsB, arrivalRate: v })} />
-                  <ParamInput label="Tingkat Pelayanan (μ)" unit="pelanggan/menit" value={paramsB.serviceRate} onChange={(v) => setParamsB({ ...paramsB, serviceRate: v })} />
+                  <DatasetUpload
+                    fileName={datasetFileNameB}
+                    rowCount={datasetB?.length ?? 0}
+                    onUpload={(file) => handleFileUpload(file, "B")}
+                    onClear={() => { setDatasetB(null); setDatasetFileNameB(""); }}
+                    inputRef={fileInputRefB}
+                  />
+                  {!datasetB && (
+                    <>
+                      <ParamInput label="Tingkat Kedatangan (λ)" unit="pelanggan/menit" value={paramsB.arrivalRate} onChange={(v) => setParamsB({ ...paramsB, arrivalRate: v })} />
+                      <ParamInput label="Tingkat Pelayanan (μ)" unit="pelanggan/menit" value={paramsB.serviceRate} onChange={(v) => setParamsB({ ...paramsB, serviceRate: v })} />
+                      <ParamInput label="Durasi Simulasi" unit="menit" value={paramsB.duration} onChange={(v) => setParamsB({ ...paramsB, duration: Math.max(1, Math.round(v)) })} />
+                    </>
+                  )}
                   <ParamInput label="Jumlah Server (c)" unit="kasir" value={paramsB.numServers} onChange={(v) => setParamsB({ ...paramsB, numServers: Math.max(1, Math.round(v)) })} />
-                  <ParamInput label="Durasi Simulasi" unit="menit" value={paramsB.duration} onChange={(v) => setParamsB({ ...paramsB, duration: Math.max(1, Math.round(v)) })} />
                 </CardContent>
               </Card>
             </div>
@@ -443,6 +492,58 @@ export default function SimulationApp() {
       <footer className="border-t mt-12 py-6 text-center text-sm text-muted-foreground">
         Simulasi Monte Carlo M/M/c — Riset Operasi · Teori Antrian · Distribusi Eksponensial
       </footer>
+    </div>
+  );
+}
+
+function DatasetUpload({
+  fileName,
+  rowCount,
+  onUpload,
+  onClear,
+  inputRef,
+}: {
+  fileName: string;
+  rowCount: number;
+  onUpload: (file: File) => void;
+  onClear: () => void;
+  inputRef: React.RefObject<HTMLInputElement>;
+}) {
+  return (
+    <div className="space-y-2">
+      <Label className="text-xs font-medium flex items-center gap-1">
+        <FileSpreadsheet className="h-3.5 w-3.5" /> Dataset CSV <span className="text-muted-foreground">(opsional)</span>
+      </Label>
+      {fileName ? (
+        <div className="flex items-center gap-2 p-2.5 rounded-lg bg-muted/60 border border-border text-sm">
+          <FileSpreadsheet className="h-4 w-4 text-primary flex-shrink-0" />
+          <span className="truncate font-medium">{fileName}</span>
+          <Badge variant="secondary" className="text-xs ml-auto flex-shrink-0">{rowCount} baris</Badge>
+          <button onClick={onClear} className="text-muted-foreground hover:text-danger flex-shrink-0">
+            <X className="h-4 w-4" />
+          </button>
+        </div>
+      ) : (
+        <button
+          type="button"
+          onClick={() => inputRef.current?.click()}
+          className="w-full flex items-center justify-center gap-2 p-3 rounded-lg border-2 border-dashed border-border hover:border-primary/50 hover:bg-muted/30 transition-colors text-sm text-muted-foreground"
+        >
+          <Upload className="h-4 w-4" />
+          Upload CSV (kolom: IAT, Service Time)
+        </button>
+      )}
+      <input
+        ref={inputRef}
+        type="file"
+        accept=".csv,.txt"
+        className="hidden"
+        onChange={(e) => {
+          const file = e.target.files?.[0];
+          if (file) onUpload(file);
+          e.target.value = "";
+        }}
+      />
     </div>
   );
 }

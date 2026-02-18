@@ -92,7 +92,96 @@ export function runSimulation(params: SimulationParams): SimulationResult {
     });
   }
 
-  // Analisis hasil
+  return computeResults(customers, numServers, duration, arrivalRate);
+}
+
+export interface DatasetRow {
+  interArrivalTime: number;
+  serviceTime: number;
+}
+
+/**
+ * Parse CSV string ke array DatasetRow
+ * Expects header row with columns containing "iat"/"inter" and "st"/"service"
+ */
+export function parseCSV(csvText: string): DatasetRow[] {
+  const lines = csvText.trim().split(/\r?\n/);
+  if (lines.length < 2) return [];
+
+  const headers = lines[0].toLowerCase().split(/[,;\t]/);
+  
+  // Auto-detect columns
+  let iatCol = headers.findIndex(h => h.includes("iat") || h.includes("inter_arrival") || h.includes("interarrival") || h.includes("inter-arrival"));
+  let stCol = headers.findIndex(h => h.includes("service") || h.includes("st") || h.includes("duration"));
+
+  // Fallback: assume first two numeric columns
+  if (iatCol === -1) iatCol = 0;
+  if (stCol === -1) stCol = Math.min(1, headers.length - 1);
+
+  const rows: DatasetRow[] = [];
+  for (let i = 1; i < lines.length; i++) {
+    const cols = lines[i].split(/[,;\t]/);
+    const iat = parseFloat(cols[iatCol]);
+    const st = parseFloat(cols[stCol]);
+    if (!isNaN(iat) && !isNaN(st) && iat >= 0 && st > 0) {
+      rows.push({ interArrivalTime: iat, serviceTime: st });
+    }
+  }
+  return rows;
+}
+
+/**
+ * Jalankan simulasi menggunakan dataset (bukan random generation)
+ */
+export function runSimulationFromDataset(
+  dataset: DatasetRow[],
+  numServers: number
+): SimulationResult {
+  const customers: CustomerRecord[] = [];
+  const serverFinishTimes = new Array(numServers).fill(0);
+  let currentTime = 0;
+
+  for (let i = 0; i < dataset.length; i++) {
+    const row = dataset[i];
+    const interArrivalTime = i === 0 ? 0 : row.interArrivalTime;
+    currentTime += interArrivalTime;
+
+    const earliestFinish = Math.min(...serverFinishTimes);
+    const serverIndex = serverFinishTimes.indexOf(earliestFinish);
+
+    const startServiceTime = Math.max(currentTime, serverFinishTimes[serverIndex]);
+    const waitTime = startServiceTime - currentTime;
+    const endServiceTime = startServiceTime + row.serviceTime;
+
+    serverFinishTimes[serverIndex] = endServiceTime;
+
+    customers.push({
+      id: i + 1,
+      randomIAT: 0,
+      randomST: 0,
+      interArrivalTime,
+      arrivalTime: currentTime,
+      serviceTime: row.serviceTime,
+      waitTime,
+      startServiceTime,
+      endServiceTime,
+      serverAssigned: serverIndex + 1,
+    });
+  }
+
+  const duration = customers.length > 0 ? customers[customers.length - 1].endServiceTime : 0;
+  const avgIAT = dataset.reduce((s, r) => s + r.interArrivalTime, 0) / dataset.length;
+  const arrivalRate = avgIAT > 0 ? 1 / avgIAT : 1;
+
+  return computeResults(customers, numServers, duration, arrivalRate);
+}
+
+function computeResults(
+  customers: CustomerRecord[],
+  numServers: number,
+  duration: number,
+  arrivalRate: number
+): SimulationResult {
   const totalCustomers = customers.length;
   if (totalCustomers === 0) {
     return {
@@ -108,12 +197,8 @@ export function runSimulation(params: SimulationParams): SimulationResult {
 
   const avgWaitTime = customers.reduce((sum, c) => sum + c.waitTime, 0) / totalCustomers;
   const maxWaitTime = Math.max(...customers.map(c => c.waitTime));
-
-  // Hitung utilisasi server
   const totalServiceTime = customers.reduce((sum, c) => sum + c.serviceTime, 0);
-  const serverUtilization = (totalServiceTime / (numServers * duration)) * 100;
-
-  // Estimasi rata-rata panjang antrian (menggunakan Little's Law approximation)
+  const serverUtilization = duration > 0 ? (totalServiceTime / (numServers * duration)) * 100 : 0;
   const avgQueueLength = arrivalRate * avgWaitTime;
 
   return {
