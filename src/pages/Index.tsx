@@ -197,52 +197,42 @@ function MetricCard({
 }
 
 export default function SimulationApp() {
-  const [paramsA, setParamsA] = useState<SimulationParams>({
+  const [commonParams, setCommonParams] = useState({
     arrivalRate: 2,
     serviceRate: 0.8,
-    numServers: 2,
     duration: 480,
   });
-  const [paramsB, setParamsB] = useState<SimulationParams>({
-    arrivalRate: 2,
-    serviceRate: 0.8,
-    numServers: 4,
-    duration: 480,
-  });
+  const [serversA, setServersA] = useState(2);
+  const [serversB, setServersB] = useState(4);
 
   const [resultA, setResultA] = useState<SimulationResult | null>(null);
   const [resultB, setResultB] = useState<SimulationResult | null>(null);
   const [activeTab, setActiveTab] = useState("dashboard");
 
-  const [datasetA, setDatasetA] = useState<DatasetRow[] | null>(null);
-  const [datasetB, setDatasetB] = useState<DatasetRow[] | null>(null);
-  const [datasetFileNameA, setDatasetFileNameA] = useState("");
-  const [datasetFileNameB, setDatasetFileNameB] = useState("");
-  const fileInputRefA = useRef<HTMLInputElement>(null);
-  const fileInputRefB = useRef<HTMLInputElement>(null);
+  const [dataset, setDataset] = useState<DatasetRow[] | null>(null);
+  const [datasetFileName, setDatasetFileName] = useState("");
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
-  const handleFileUpload = (file: File, scenario: "A" | "B") => {
+  const handleFileUpload = (file: File) => {
     const reader = new FileReader();
     reader.onload = (e) => {
       const text = e.target?.result as string;
       const rows = parseCSV(text);
       if (rows.length === 0) return;
-      if (scenario === "A") {
-        setDatasetA(rows);
-        setDatasetFileNameA(file.name);
-      } else {
-        setDatasetB(rows);
-        setDatasetFileNameB(file.name);
-      }
+      setDataset(rows);
+      setDatasetFileName(file.name);
     };
     reader.readAsText(file);
   };
 
+  const paramsA: SimulationParams = { ...commonParams, numServers: serversA };
+  const paramsB: SimulationParams = { ...commonParams, numServers: serversB };
+
   const runBothSimulations = useCallback(() => {
-    setResultA(datasetA ? runSimulationFromDataset(datasetA, paramsA.numServers) : runSimulation(paramsA));
-    setResultB(datasetB ? runSimulationFromDataset(datasetB, paramsB.numServers) : runSimulation(paramsB));
+    setResultA(dataset ? runSimulationFromDataset(dataset, serversA) : runSimulation(paramsA));
+    setResultB(dataset ? runSimulationFromDataset(dataset, serversB) : runSimulation(paramsB));
     setActiveTab("results");
-  }, [paramsA, paramsB, datasetA, datasetB]);
+  }, [commonParams, serversA, serversB, dataset]);
 
   const getWaitStatus = (val: number) => (val > 10 ? "danger" : val > 5 ? "warning" : "good");
   const getUtilStatus = (val: number) => (val > 90 ? "danger" : val > 70 ? "warning" : "good");
@@ -295,8 +285,33 @@ export default function SimulationApp() {
 
           {/* === DASHBOARD TAB === */}
           <TabsContent value="dashboard" className="space-y-6 mt-6">
+            {/* Input Data Bersama */}
+            <Card className="shadow-brand">
+              <CardHeader className="pb-3">
+                <CardTitle className="text-lg flex items-center gap-2">
+                  <FileSpreadsheet className="h-5 w-5 text-primary" /> Input Data Simulasi
+                </CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                <DatasetUpload
+                  fileName={datasetFileName}
+                  rowCount={dataset?.length ?? 0}
+                  onUpload={(file) => handleFileUpload(file)}
+                  onClear={() => { setDataset(null); setDatasetFileName(""); }}
+                  inputRef={fileInputRef}
+                />
+                {!dataset && (
+                  <div className="grid md:grid-cols-3 gap-4">
+                    <ParamInput label="Tingkat Kedatangan (λ)" unit="pelanggan/menit" value={commonParams.arrivalRate} onChange={(v) => setCommonParams({ ...commonParams, arrivalRate: v })} />
+                    <ParamInput label="Tingkat Pelayanan (μ)" unit="pelanggan/menit" value={commonParams.serviceRate} onChange={(v) => setCommonParams({ ...commonParams, serviceRate: v })} />
+                    <ParamInput label="Durasi Simulasi" unit="menit" value={commonParams.duration} onChange={(v) => setCommonParams({ ...commonParams, duration: Math.max(1, Math.round(v)) })} />
+                  </div>
+                )}
+              </CardContent>
+            </Card>
+
+            {/* Jumlah Server per Skenario */}
             <div className="grid md:grid-cols-2 gap-6">
-              {/* Skenario A */}
               <Card className="border-danger/30 shadow-brand">
                 <CardHeader className="pb-3">
                   <CardTitle className="flex items-center gap-2 text-lg">
@@ -304,26 +319,11 @@ export default function SimulationApp() {
                     Skenario A — Lonjakan (Surge)
                   </CardTitle>
                 </CardHeader>
-                <CardContent className="space-y-4">
-                  <DatasetUpload
-                    fileName={datasetFileNameA}
-                    rowCount={datasetA?.length ?? 0}
-                    onUpload={(file) => handleFileUpload(file, "A")}
-                    onClear={() => { setDatasetA(null); setDatasetFileNameA(""); }}
-                    inputRef={fileInputRefA}
-                  />
-                  {!datasetA && (
-                    <>
-                      <ParamInput label="Tingkat Kedatangan (λ)" unit="pelanggan/menit" value={paramsA.arrivalRate} onChange={(v) => setParamsA({ ...paramsA, arrivalRate: v })} />
-                      <ParamInput label="Tingkat Pelayanan (μ)" unit="pelanggan/menit" value={paramsA.serviceRate} onChange={(v) => setParamsA({ ...paramsA, serviceRate: v })} />
-                      <ParamInput label="Durasi Simulasi" unit="menit" value={paramsA.duration} onChange={(v) => setParamsA({ ...paramsA, duration: Math.max(1, Math.round(v)) })} />
-                    </>
-                  )}
-                  <ParamInput label="Jumlah Server (c)" unit="kasir" value={paramsA.numServers} onChange={(v) => setParamsA({ ...paramsA, numServers: Math.max(1, Math.round(v)) })} />
+                <CardContent>
+                  <ParamInput label="Jumlah Server (c)" unit="kasir" value={serversA} onChange={(v) => setServersA(Math.max(1, Math.round(v)))} />
                 </CardContent>
               </Card>
 
-              {/* Skenario B */}
               <Card className="border-success/30 shadow-brand">
                 <CardHeader className="pb-3">
                   <CardTitle className="flex items-center gap-2 text-lg">
@@ -331,22 +331,8 @@ export default function SimulationApp() {
                     Skenario B — Optimal
                   </CardTitle>
                 </CardHeader>
-                <CardContent className="space-y-4">
-                  <DatasetUpload
-                    fileName={datasetFileNameB}
-                    rowCount={datasetB?.length ?? 0}
-                    onUpload={(file) => handleFileUpload(file, "B")}
-                    onClear={() => { setDatasetB(null); setDatasetFileNameB(""); }}
-                    inputRef={fileInputRefB}
-                  />
-                  {!datasetB && (
-                    <>
-                      <ParamInput label="Tingkat Kedatangan (λ)" unit="pelanggan/menit" value={paramsB.arrivalRate} onChange={(v) => setParamsB({ ...paramsB, arrivalRate: v })} />
-                      <ParamInput label="Tingkat Pelayanan (μ)" unit="pelanggan/menit" value={paramsB.serviceRate} onChange={(v) => setParamsB({ ...paramsB, serviceRate: v })} />
-                      <ParamInput label="Durasi Simulasi" unit="menit" value={paramsB.duration} onChange={(v) => setParamsB({ ...paramsB, duration: Math.max(1, Math.round(v)) })} />
-                    </>
-                  )}
-                  <ParamInput label="Jumlah Server (c)" unit="kasir" value={paramsB.numServers} onChange={(v) => setParamsB({ ...paramsB, numServers: Math.max(1, Math.round(v)) })} />
+                <CardContent>
+                  <ParamInput label="Jumlah Server (c)" unit="kasir" value={serversB} onChange={(v) => setServersB(Math.max(1, Math.round(v)))} />
                 </CardContent>
               </Card>
             </div>
@@ -369,7 +355,7 @@ export default function SimulationApp() {
                 {/* Metric Cards */}
                 <div className="space-y-4">
                   <h3 className="font-bold text-lg flex items-center gap-2">
-                    <AlertTriangle className="h-5 w-5 text-danger" /> Skenario A — {paramsA.numServers} Kasir (Surge)
+                    <AlertTriangle className="h-5 w-5 text-danger" /> Skenario A — {serversA} Kasir (Surge)
                   </h3>
                   <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
                     <MetricCard icon={Users} label="Total Pelanggan" value={resultA.totalCustomers.toString()} unit="orang" />
@@ -383,7 +369,7 @@ export default function SimulationApp() {
 
                 <div className="space-y-4">
                   <h3 className="font-bold text-lg flex items-center gap-2">
-                    <CheckCircle2 className="h-5 w-5 text-success" /> Skenario B — {paramsB.numServers} Kasir (Optimal)
+                    <CheckCircle2 className="h-5 w-5 text-success" /> Skenario B — {serversB} Kasir (Optimal)
                   </h3>
                   <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
                     <MetricCard icon={Users} label="Total Pelanggan" value={resultB.totalCustomers.toString()} unit="orang" />
@@ -421,8 +407,8 @@ export default function SimulationApp() {
                       <CardTitle className="text-lg">Utilisasi Server</CardTitle>
                     </CardHeader>
                     <CardContent className="flex justify-around items-center">
-                      <GaugeChart value={resultA.serverUtilization} label={`Skenario A (${paramsA.numServers} kasir)`} />
-                      <GaugeChart value={resultB.serverUtilization} label={`Skenario B (${paramsB.numServers} kasir)`} />
+                      <GaugeChart value={resultA.serverUtilization} label={`Skenario A (${serversA} kasir)`} />
+                      <GaugeChart value={resultB.serverUtilization} label={`Skenario B (${serversB} kasir)`} />
                     </CardContent>
                   </Card>
                 </div>
@@ -440,8 +426,8 @@ export default function SimulationApp() {
               </Card>
             ) : (
               <div className="space-y-6">
-                <SimulationTable title={`Skenario A — ${paramsA.numServers} Kasir`} result={resultA} variant="danger" />
-                <SimulationTable title={`Skenario B — ${paramsB.numServers} Kasir`} result={resultB!} variant="success" />
+                <SimulationTable title={`Skenario A — ${serversA} Kasir`} result={resultA} variant="danger" />
+                <SimulationTable title={`Skenario B — ${serversB} Kasir`} result={resultB!} variant="success" />
               </div>
             )}
           </TabsContent>
